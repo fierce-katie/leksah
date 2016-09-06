@@ -76,7 +76,7 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Distribution.PackageDescription (hsSourceDirs)
 import System.Log.Logger (infoM)
 import Data.Text (Text)
-import qualified Data.Text as T (null, isPrefixOf, unpack, pack)
+import qualified Data.Text as T (null, isPrefixOf, unpack, pack, toLower)
 import Data.Monoid ((<>))
 import qualified Control.Arrow as A (Arrow(..))
 import Data.Function (on)
@@ -516,19 +516,21 @@ getIdentifierDescr str st1 st2 =
     in r1 ++ r2
 
 --
--- | Lookup of an identifiers starting with the specified prefix and return a list.
+-- | Lookup of an identifiers starting with the specified prefix and return a list (case insensitive).
 --
 getIdentifiersStartingWith :: (SymbolTable alpha , SymbolTable beta)  => Text -> alpha   -> beta   -> [Text]
-getIdentifiersStartingWith prefix st1 st2 =
-    takeWhile (T.isPrefixOf prefix) $
-        if memberLocal || memberGlobal then
-            prefix : Set.toAscList names
-            else
-            Set.toAscList names
+getIdentifiersStartingWith prefix st1 st2 = nub $ map snd $
+    addExactLookup $ takeWhile (isPrefixOfAnyCase prefix) names
     where
-        (_, memberLocal, localNames) = Set.splitMember prefix (symbols st1)
-        (_, memberGlobal, globalNames) = Set.splitMember prefix (symbols st2)
-        names = Set.union globalNames localNames
+        (_, localNames) = Set.split prefixPair locals
+        (_, globalNames) = Set.split prefixPair globals
+        locals = Set.map (\sym -> (T.toLower sym, sym)) (symbols st1)
+        globals = Set.map (\sym -> (T.toLower sym, sym)) (symbols st2)
+        allNames =  Set.toAscList $ Set.union locals globals
+        names = Set.toAscList $ Set.union globalNames localNames
+        isPrefixOfAnyCase p (x, _) = T.isPrefixOf (T.toLower p) x
+        prefixPair = (T.toLower prefix, prefix)
+        addExactLookup res = filter (\(x,_) -> x == T.toLower prefix) allNames ++ res
 
 getCompletionOptions :: Text -> IDEM [Text]
 getCompletionOptions prefix = do
